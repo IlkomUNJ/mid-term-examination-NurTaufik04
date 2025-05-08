@@ -352,4 +352,128 @@ impl BstNode {
             Some(x) => Some(x.upgrade().unwrap()),
         }
     }
+
+    // problem A
+impl BstNode {
+    /// Mencari target_node dalam tree dan menambahkan value sebagai anaknya.
+    pub fn add_node(&self, target_node: &BstNodeLink, value: i32) -> bool {
+        fn dfs(current: &BstNodeLink, target: &BstNodeLink, value: i32) -> bool {
+            if Rc::ptr_eq(current, target) {
+                let mut cur_mut = current.borrow_mut();
+                if value < cur_mut.key.unwrap() {
+                    if cur_mut.left.is_none() {
+                        cur_mut.add_left_child(current, value);
+                        return true;
+                    }
+                } else {
+                    if cur_mut.right.is_none() {
+                        cur_mut.add_right_child(current, value);
+                        return true;
+                    }
+                }
+                return false;
+            }
+            let left = current.borrow().left.clone();
+            if let Some(left_node) = left {
+                if dfs(&left_node, target, value) {
+                    return true;
+                }
+            }
+            let right = current.borrow().right.clone();
+            if let Some(right_node) = right {
+                if dfs(&right_node, target, value) {
+                    return true;
+                }
+            }
+            false
+        }
+
+        let root = BstNode::get_root(target_node);
+        dfs(&root, target_node, value)
+    }
+
+    /// Mengembalikan predecessor (nilai terbesar di subtree kiri)
+    pub fn tree_predecessor(node: &BstNodeLink) -> Option<BstNodeLink> {
+        let left = node.borrow().left.clone();
+        if let Some(left_node) = left {
+            return Some(left_node.borrow().maximum());
+        }
+        let mut current = Rc::clone(node);
+        while let Some(parent) = BstNode::upgrade_weak_to_strong(current.borrow().parent.clone()) {
+            if parent.borrow().right.as_ref().map_or(false, |r| Rc::ptr_eq(r, &current)) {
+                return Some(parent);
+            }
+            current = parent;
+        }
+        None
+    }
+
+    /// Mengembalikan node median dari BST (berdasarkan traversal inorder)
+    pub fn median(&self) -> BstNodeLink {
+        fn in_order_collect(node: &Option<BstNodeLink>, acc: &mut Vec<BstNodeLink>) {
+            if let Some(n) = node {
+                let n_borrow = n.borrow();
+                in_order_collect(&n_borrow.left, acc);
+                acc.push(n.clone());
+                in_order_collect(&n_borrow.right, acc);
+            }
+        }
+
+        let mut nodes = vec![];
+        let root = BstNode::get_root(&self.get_bst_nodelink_copy());
+        in_order_collect(&Some(root.clone()), &mut nodes);
+
+        if nodes.is_empty() {
+            return self.get_bst_nodelink_copy();
+        }
+
+        let median_idx = nodes.len() / 2;
+        nodes[median_idx].clone()
+    }
+
+    /// Menyeimbangkan BST dengan traversal inorder, membangun ulang tree secara rekursif.
+    pub fn tree_rebalance(node: &BstNodeLink) -> BstNodeLink {
+        fn in_order_nodes(node: &Option<BstNodeLink>, acc: &mut Vec<BstNodeLink>) {
+            if let Some(n) = node {
+                let n_borrow = n.borrow();
+                in_order_nodes(&n_borrow.left, acc);
+                acc.push(n.clone());
+                in_order_nodes(&n_borrow.right, acc);
+            }
+        }
+
+        fn build_balanced(nodes: &[BstNodeLink], parent: Option<&BstNodeLink>) -> Option<BstNodeLink> {
+            if nodes.is_empty() {
+                return None;
+            }
+
+            let mid = nodes.len() / 2;
+            let node = Rc::new(RefCell::new(BstNode {
+                key: nodes[mid].borrow().key,
+                left: build_balanced(&nodes[..mid], None),
+                right: build_balanced(&nodes[mid + 1..], None),
+                parent: None,
+            }));
+
+            if let Some(p) = parent {
+                node.borrow_mut().parent = Some(Rc::downgrade(p));
+            }
+
+            if let Some(left) = &node.borrow().left {
+                left.borrow_mut().parent = Some(Rc::downgrade(&node));
+            }
+            if let Some(right) = &node.borrow().right {
+                right.borrow_mut().parent = Some(Rc::downgrade(&node));
+            }
+
+            Some(node)
+        }
+
+        let mut nodes = vec![];
+        let root = BstNode::get_root(node);
+        in_order_nodes(&Some(root), &mut nodes);
+        build_balanced(&nodes, None).unwrap()
+        }
+}    
 }
+
